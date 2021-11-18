@@ -1,3 +1,4 @@
+#pragma warning(disable : 4996)
 #include<iostream>
 #include<winsock.h>
 #include <fstream>
@@ -25,34 +26,116 @@ struct Question {
 	}
 };
 
-enum MessageTypes { Register = 'REG', Response = 'RES' };
+enum MessageTypes { Register = 'r', Response = 'R' };
 
 struct Message {
-	string messageType;
+	char messageType;
+	int strLength;
 	string content;
 
-	Message(string mt, string mess) {
+	Message(char mt, string mess, int len) {
 		messageType = mt;
 		content = mess;
+		strLength = len;
 	}
 	Message() {
 		content = "";
+		strLength = 0;
 	}
 };
-vector <Question> questions;
+vector <Question> questionList;
 int questionCount;
-void convertToMessage(char*buff, Message& message) {
-	for (int i = 0; i < 
 
+struct User {
+	string name;
+	int socket;
+
+	User(string nameReg, int socketReg) {
+		name = nameReg;
+		socket = socketReg;
+	}
+};
+
+vector <User> userList;
+int userCount;
+
+void convertToMessage(char*buff, Message& message) {
+	message.messageType = buff[0];
+	string len = "";
+	for (int i = 1; i < 3; i++)
+		len += buff[i];
+	int n = stoi(len);
+	cout << n << endl;
+	string s = "";
+	for (int i = 3; i < n + 3; i++)
+		s += buff[i];
+	message.content = s;
+	message.strLength = n;
+	cout << s << endl;
 }
+
+bool IsExistedUserName(string userName) {
+	auto it = find_if(userList.begin(), userList.end(), [&userName](const User& obj) {return obj.name == userName; });
+	if (it != userList.end()) return true;
+	return false;
+}
+bool isUnderScores(char c)
+{
+	if (c == '_') return true;
+	return false;
+}
+string IsValidUserName(string name) {
+	for (const char c : name) {
+		if (!isalpha(c) && !isalnum(c) && !isUnderScores(c))
+			return "Name can only have letter number or '_'";
+	}
+	if (name.length() > 10) return "Name length can't be more than 10";
+	return "";
+}
+string ValidateUserName(string userName) {
+	if (IsExistedUserName(userName)) return "User name is existed";
+	return IsValidUserName(userName);
+}
+
+void SendResponseSuccess(User user) {
+	//Send the response to client
+	cout << user.socket << endl;
+	send(user.socket, "SUCCESS", MaxStringSize, 0);
+	cout << "*******************************" << endl;
+}
+
+void SendResponseFailed(int socket, string message) {
+	char buff[MaxStringSize];
+	strcpy(buff, message.c_str());
+	send(socket, buff, MaxStringSize, 0);
+}
+void HandleRegisterRequest(int nClientSocket, string userName) {
+	string res = ValidateUserName(userName);
+	if (res.length()) {
+		SendResponseFailed(nClientSocket, res);
+	}
+	else {
+		User user = User(userName, nClientSocket);
+		userList.push_back(user);
+		SendResponseSuccess(user);
+	}
+}
+void HandleMessageRecv(int nClientSocket, Message message) {
+	switch (message.messageType) {
+	case 'R':
+		HandleRegisterRequest(nClientSocket, message.content);
+		break;
+	}
+}
+
 void ProcessNewMessage(int nClientSocket)
 {
-	cout << endl << "Processing the new message for the client socket:" << nClientSocket;
+	cout << "Processing the new message for the client socket:" << nClientSocket <<endl;
 	char buff[256 + 5];
 	int nRet = recv(nClientSocket, buff, 256 + 5, 0);
 	if (nRet < 0)
 	{
-		cout << endl << "Something wrong happend..Closing the connection for the client";
+		cout << "Something wrong happend..Closing the connection for the client" <<endl;
 		closesocket(nClientSocket);
 		for (int i = 0; i < 5; i++)
 		{
@@ -67,12 +150,11 @@ void ProcessNewMessage(int nClientSocket)
 	{
 		Message message;
 		convertToMessage(buff, message);
-		message.messageType = buff.substr(0, 3);
-		message.content = 
-		cout << endl << "The message recieved from client is:" << buff;
-		//Send the response to client
-		send(nClientSocket, "Processed your request", 23, 0);
-		cout << endl << "*******************************";
+		cout << "The message recieved from client is:" << buff << endl;
+		cout << message.messageType << " " << message.content << " " << message.strLength << endl;
+
+		HandleMessageRecv(nClientSocket,message);
+		
 	}
 }
 
@@ -97,7 +179,7 @@ void ProcessTheNewRequest()
 			}
 			if (i == 5)
 			{
-				cout << endl << "No space for new connection";
+				cout << "No space for new connection" << endl;
 			}
 		}
 	}
@@ -128,9 +210,9 @@ void GetData() {
 		getline(fin, description);
 		if (keyword.length() > 30) continue;
 		Question q = Question(keyword, description);
-		questions.push_back(q);
+		questionList.push_back(q);
 	}
-	questionCount = questions.size();
+	questionCount = questionList.size();
 }
 int main()
 {
@@ -139,23 +221,23 @@ int main()
 	WSADATA ws;
 	if (WSAStartup(MAKEWORD(2, 2), &ws) < 0)
 	{
-		cout << endl << "WSA Failed to initialize";
+		cout << "WSA Failed to initialize" << endl;
 		exit(EXIT_FAILURE);
 	}
 	else
 	{
-		cout << endl << "WSA initialized";
+		cout << "WSA initialized" << endl;
 	}
 
 	// Init socket
 	nSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (nSocket < 0)
 	{
-		cout << endl << "The socket not opened";
+		cout << "The socket not opened" << endl;
 	}
 	else
 	{
-		cout << endl << "The socket opened successfully" << nSocket;
+		cout << "The socket opened successfully" << nSocket << endl;
 	}
 	// Init env for sockaddr structure
 	srv.sin_family = AF_INET;
@@ -169,11 +251,11 @@ int main()
 	nRet = ioctlsocket(nSocket, FIONBIO, &optval);
 	if (nRet != 0)
 	{
-		cout << endl << "iocltsocket call failed";
+		cout << "iocltsocket call failed" << endl ;
 	}
 	else
 	{
-		cout << endl << "ioctlsocket call passed";
+		cout << "ioctlsocket call passed" << endl;
 	} 
 
 	//setsockopt 
@@ -182,11 +264,11 @@ int main()
 	nRet = setsockopt(nSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&nOptVal, nOptLen);
 	if (!nRet)
 	{
-		cout << endl << "The setsockopt call successfully";
+		cout << "The setsockopt call successfully" << endl;
 	}
 	else
 	{
-		cout << endl << "The setsockopt call failed";
+		cout << "The setsockopt call failed" << endl;
 		WSACleanup();
 		exit(EXIT_FAILURE);
 	}
@@ -195,26 +277,26 @@ int main()
 	nRet = bind(nSocket, (sockaddr*)&srv, sizeof(sockaddr));
 	if (nRet < 0)
 	{
-		cout << endl << "Fail to bind to local port";
+		cout << "Fail to bind to local port" << endl;
 		WSACleanup();
 		exit(EXIT_FAILURE);
 	}
 	else
 	{
-		cout << endl << "Successfull to bind to local port";
+		cout << "Successfull to bind to local port" << endl;
 	}
 
 	// Listen the request from client (queues the requests)
 	nRet = listen(nSocket, 5);
 	if (nRet < 0)
 	{
-		cout << endl << "Fail to start listen to local port";
+		cout << "Fail to start listen to local port" << endl;
 		WSACleanup();
 		exit(EXIT_FAILURE);
 	}
 	else
 	{
-		cout << endl << "Started listening to local port";
+		cout << "Started listening to local port" << endl;
 	}
 
 	nMaxFd = nSocket;
@@ -225,8 +307,8 @@ int main()
 	//read data
 	GetData();
 
-	for (int i = 0; i < questions.size(); i++) {
-		cout << questions[i].keyword << endl;
+	for (int i = 0; i < questionList.size(); i++) {
+		cout << questionList[i].keyword << endl;
 	}
 
 	while (1)
@@ -253,24 +335,24 @@ int main()
 		{
 			//When someone connects or communicates with a message over
 			//a dedicated connection
-			cout << endl << "Data on port ... Processing now...";
+			cout << "Data on port ... Processing now..." << endl;
 			ProcessTheNewRequest();
 		}
 		else if (nRet == 0)
 		{
 			//No connection or any communication request made or you can
 			//say that none of the socket descriptors are ready
-			/*cout << endl << "Nothing on port:" << PORT;*/
+			/*cout << "Nothing on port:" << PORT;*/
 			//Process the request
 		}
 		else
 		{
-			cout << endl << "I failed...";
+			cout << "I failed..." << endl;
 			WSACleanup();
 			exit(EXIT_FAILURE);
 			//It failed and your application should show some useful message
 		}
-		/*cout << endl << "After the select call:" << fr.fd_count;*/
+		/*cout << "After the select call:" << fr.fd_count;*/
 	}
 
 	return 0;
