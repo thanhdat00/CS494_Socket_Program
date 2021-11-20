@@ -11,7 +11,7 @@ const char FAILED_RES[] = "FAILED";
 int nClientSocket;
 struct sockaddr_in srv;
 //enum MessageTypes { Register = 'r', Response = 'R' };
-enum State { Register = 'r', Response = 'R'  };
+enum State { Register = 0, Response = 1, WaitToStartGame = 2, InitialGame = 3, InGame = 4 };
 State state;
 struct Message {
 	string messageType;
@@ -41,6 +41,7 @@ string CreateRegisterRequest(string s) {
 void HandleRegisterProcess(char* buff) {
 	if (strcmp(buff, SUCCESS_RES) == 0) {
 		cout << "Register Success" << endl;
+		
 	}
 	/*else if (strcmp(buff, FAILED_RES) == 0) {
 		cout << "Register Failed" << endl;
@@ -49,11 +50,23 @@ void HandleRegisterProcess(char* buff) {
 		cout << buff << endl;
 	}
 }
-void HandleServerResponse(char* buff, State state) {
+void HandleServerResponse(char* buff) {
 	switch (state) {
 	case Register:
 		HandleRegisterProcess(buff);
+		state = WaitToStartGame;
+		break;
+	case WaitToStartGame:
+		cout << "[S]" << buff << endl;
+		state = InitialGame; 
+		//HandleStartGameProcess(buff);
+		break;
+	case InitialGame:
+		cout << "[S]" << buff << endl;
+		state = InGame;
+		break;
 	}
+	
 }
 int main()
 {
@@ -92,7 +105,7 @@ int main()
 	else
 	{
 		cout << endl << "Connect to the server";	
-		char buff[255] = { 0, };
+		char buff[256] = { 0, };
 		recv(nClientSocket, buff, 255, 0);
 		cout << endl <<"From server: " << buff;
 		cout << "=================================" << endl;
@@ -110,25 +123,38 @@ int main()
 				cout << "Register a name: " << endl;
 				cin >> sIn;
 				sIn = CreateRegisterRequest(sIn);
-				cout << sIn << endl;
+				//cout << sIn << endl;
+			}
+
+			if (state == WaitToStartGame) {
+				cout << "Waiting to start game...." << endl;
 			}
 
 			strcpy(buff, sIn.c_str());
 			cout << endl << buff;
+			if (state != WaitToStartGame && state != InitialGame) {
+				int check = 0;
 
-			int check = send(nClientSocket,buff, sizeof(buff), 0);
+				if (sIn.length() != 0)
+					check = send(nClientSocket, buff, sizeof(buff), 0);
 
-			if (check > 0)
-			{
-				cout << endl << "Press any key to get the response from server..";
-				getchar();
+				if (check > 0)
+				{
+					/*cout << endl << "Press any key to get the response from server..";
+					getchar();*/
+					recv(nClientSocket, buff, 256, 0);
+					HandleServerResponse(buff);
+				}
+				else
+				{
+					cout << endl << "send failed";
+				}
+			}
+			else {
 				recv(nClientSocket, buff, 256, 0);
-				HandleServerResponse(buff, state);
+				HandleServerResponse(buff);
 			}
-			else
-			{
-				cout << endl << "send failed";
-			}
+			
 		}
 	}
 

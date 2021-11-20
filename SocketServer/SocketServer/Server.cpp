@@ -4,6 +4,7 @@
 #include <fstream>
 #include<vector>
 #include <string>
+#include <time.h>  
 using namespace std;
 #define PORT 9909
 typedef char TinyInt;
@@ -15,7 +16,7 @@ fd_set fr, fw, fe;
 int nMaxFd;
 int nSocket;
 int nArrClient[5];
-
+time_t startTimer;
 struct Question {
 	string keyword;
 	string description;
@@ -24,9 +25,15 @@ struct Question {
 		keyword = key;
 		description = des;
 	}
-};
 
+	Question() {};
+};
+int questionIndex = 0;
 enum MessageTypes { Register = 'r', Response = 'R' };
+enum State {Start = 0, WaitingToStart = 1, InitialGame = 2, InGame = 3};
+Question currentQuestion = Question();
+State state = Start;
+
 
 struct Message {
 	char messageType;
@@ -42,6 +49,13 @@ struct Message {
 		content = "";
 		strLength = 0;
 	}
+
+	string toString() {
+		if (to_string(strLength).length() < 2);
+		string len = "0" + to_string(strLength);
+		return messageType + len + content;
+		
+	}
 };
 vector <Question> questionList;
 int questionCount;
@@ -49,10 +63,15 @@ int questionCount;
 struct User {
 	string name;
 	int socket;
+	int point;
 
 	User(string nameReg, int socketReg) {
 		name = nameReg;
 		socket = socketReg;
+	}
+
+	void setPoint(int p) {
+		point = p;
 	}
 };
 
@@ -62,6 +81,7 @@ int userCount;
 void convertToMessage(char*buff, Message& message) {
 	message.messageType = buff[0];
 	string len = "";
+	cout << buff << endl;
 	for (int i = 1; i < 3; i++)
 		len += buff[i];
 	int n = stoi(len);
@@ -198,6 +218,36 @@ void ProcessTheNewRequest()
 	}
 }
 
+string QuestionToString(Question q) {
+	return to_string(q.keyword.length()) + "_" + q.description;
+}
+string GetQuestion() {
+	int questionIndex = rand() % (questionList.size());
+	currentQuestion = questionList[questionIndex];
+	questionList.erase(questionList.begin() + questionIndex);
+	return QuestionToString(currentQuestion);
+}
+void SendResponseToAllUser() {
+	for (int i = 0; i < userList.size(); i++) {
+		if (state == WaitingToStart) {
+			send(userList[i].socket, "Initial Game", MaxStringSize, 0);
+		}
+		if (state == InitialGame) {
+			string ques = GetQuestion();
+			Message returnQuestion = Message('I', ques, ques.length());
+
+			char buff[1000];
+			strcpy(buff, returnQuestion.toString().c_str());
+
+			send(userList[i].socket, buff, 1000, 0);
+		}
+	}
+}
+
+void InitializeGame() {
+
+}
+
 void GetData() {
 	ifstream fin("database.txt");
 	fin >> questionCount;
@@ -247,7 +297,7 @@ int main()
 
 	//About the blocking and non blocking sockets
 	//optval = 0 means blocking and !=0 means non blocking 
-	u_long optval = 1;
+	/*u_long optval = 1;
 	nRet = ioctlsocket(nSocket, FIONBIO, &optval);
 	if (nRet != 0)
 	{
@@ -256,7 +306,7 @@ int main()
 	else
 	{
 		cout << "ioctlsocket call passed" << endl;
-	} 
+	} */
 
 	//setsockopt 
 	int nOptVal = 0;
@@ -342,8 +392,8 @@ int main()
 		{
 			//No connection or any communication request made or you can
 			//say that none of the socket descriptors are ready
-			/*cout << "Nothing on port:" << PORT;*/
-			//Process the request
+			cout << "Nothing on port:" << PORT;
+			
 		}
 		else
 		{
@@ -352,6 +402,30 @@ int main()
 			exit(EXIT_FAILURE);
 			//It failed and your application should show some useful message
 		}
+		cout << "State: " << state << endl;
+		//Process the request
+
+		if (state == Start) {
+			if (userList.size() == 1) {
+				startTimer = time(0);
+				state = WaitingToStart;
+			}
+		}
+		if (state == WaitingToStart) {
+			cout << difftime(time(0), startTimer) << endl;
+			cout <<"Time: " << time(0) - startTimer << endl;
+			if (time(0) - startTimer >= 5) {
+				cout << "Start" << endl;
+				SendResponseToAllUser();
+				state = InitialGame;
+			}
+		}
+		if (state == InitialGame) {
+			InitializeGame();
+			SendResponseToAllUser();
+			state = InGame;
+		}
+	
 		/*cout << "After the select call:" << fr.fd_count;*/
 	}
 
